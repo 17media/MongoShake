@@ -2,7 +2,9 @@ package docsyncer
 
 import (
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"mongoshake/collector/filter"
 	"mongoshake/common"
@@ -10,8 +12,8 @@ import (
 	LOG "github.com/vinllen/log4go"
 	"github.com/vinllen/mgo"
 	"github.com/vinllen/mgo/bson"
+
 	"mongoshake/collector/configure"
-	"math"
 )
 
 /**
@@ -54,7 +56,7 @@ func GetDbNamespace(url string) ([]utils.NS, map[string][]string, error) {
 	var err error
 	var conn *utils.MongoConn
 	if conn, err = utils.NewMongoConn(url, utils.VarMongoConnectModeSecondaryPreferred, true,
-			utils.ReadWriteConcernLocal, utils.ReadWriteConcernDefault); conn == nil || err != nil {
+		utils.ReadWriteConcernLocal, utils.ReadWriteConcernDefault); conn == nil || err != nil {
 		return nil, nil, err
 	}
 	defer conn.Close()
@@ -142,7 +144,13 @@ func NewDocumentSplitter(src string, ns utils.NS) *DocumentSplitter {
 		ds.pieceNumber = int(math.Ceil(float64(ds.count) / float64(ds.pieceSize)))
 		ds.readerChan = make(chan *DocumentReader, SpliterReader)
 	}
-
+	go func() {
+		tick := time.NewTicker(20 * time.Minute)
+		select {
+		case <-tick.C:
+			ds.conn.Session.Refresh()
+		}
+	}()
 	go func() {
 		if err := ds.Run(); err != nil {
 			LOG.Crash(err)
