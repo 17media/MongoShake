@@ -2,18 +2,19 @@ package docsyncer
 
 import (
 	"fmt"
-	"strings"
 	"math"
+	"strings"
+	"time"
 
+	"mongoshake/collector/configure"
 	"mongoshake/collector/filter"
 	"mongoshake/common"
-	"mongoshake/collector/configure"
 
+	"context"
 	LOG "github.com/vinllen/log4go"
 	"github.com/vinllen/mgo"
 	"github.com/vinllen/mgo/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"context"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -57,7 +58,7 @@ func GetDbNamespace(url string) ([]utils.NS, map[string][]string, error) {
 	var err error
 	var conn *utils.MongoConn
 	if conn, err = utils.NewMongoConn(url, utils.VarMongoConnectModeSecondaryPreferred, true,
-			utils.ReadWriteConcernLocal, utils.ReadWriteConcernDefault); conn == nil || err != nil {
+		utils.ReadWriteConcernLocal, utils.ReadWriteConcernDefault); conn == nil || err != nil {
 		return nil, nil, err
 	}
 	defer conn.Close()
@@ -145,7 +146,13 @@ func NewDocumentSplitter(src string, ns utils.NS) *DocumentSplitter {
 		ds.pieceNumber = int(math.Ceil(float64(ds.count) / float64(ds.pieceSize)))
 		ds.readerChan = make(chan *DocumentReader, SpliterReader)
 	}
-
+	go func() {
+		tick := time.NewTicker(20 * time.Minute)
+		select {
+		case <-tick.C:
+			ds.conn.Session.Refresh()
+		}
+	}()
 	go func() {
 		if err := ds.Run(); err != nil {
 			LOG.Crash(err)
@@ -299,7 +306,7 @@ func (reader *DocumentReader) ensureNetwork() (err error) {
 
 	if reader.client == nil {
 		reader.client, err = utils.NewMongoCommunityConn(reader.src, conf.Options.MongoConnectMode, true,
-				utils.ReadWriteConcernLocal, utils.ReadWriteConcernDefault)
+			utils.ReadWriteConcernLocal, utils.ReadWriteConcernDefault)
 		if err != nil {
 			return err
 		}
