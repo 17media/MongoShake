@@ -450,7 +450,13 @@ func (syncer *DBSyncer) splitSync(reader *DocumentReader, colExecutor *Collectio
 	bufferSize := conf.Options.FullSyncReaderDocumentBatchSize
 	buffer := make([]*bson.Raw, 0, bufferSize)
 	bufferByteSize := 0
-
+	go func() {
+		tick := time.NewTicker(20 * time.Minute)
+		select {
+		case <-tick.C:
+			colExecutor.conn.Session.Refresh()
+		}
+	}()
 	for {
 		doc, err := reader.NextDoc()
 		if err != nil {
